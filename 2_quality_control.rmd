@@ -1,0 +1,276 @@
+---
+title: "Quality control"
+author: "Yang Li"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+---
+
+
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(here)
+library(qs)
+library(Polychrome)
+library(scater) # Single-Cell Analysis Toolkit for Gene Expression Data
+# remotes::install_github('chris-mcginnis-ucsf/DoubletFinder')
+# used to find doublets. We usually do not use it.
+
+```
+
+
+
+```{r, echo = F, eval = T, message = F, warning = F, error = F}
+
+# Set working dir
+here::i_am("2_quality_control.Rmd") # displays the top-level directory of the current project
+here::set_here() # reates an empty file named .here , by default in the current directory
+print(paste("Current working directory:", here::here()))
+
+```
+
+
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+# Load data
+combined <- qs::qread('combined_raw.qsave')
+
+```
+
+
+
+# Number of cells of the original data
+
+
+
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+table(combined$orig.ident)
+
+```
+
+
+
+
+# Ribosomal genes
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+# Mouse
+rb.genes <-
+  rownames(combined)[grep("^Rp[sl][[:digit:]]", rownames(combined))]
+percent.ribo <-
+  colSums(combined[rb.genes, ]) / Matrix::colSums(combined) * 100
+combined <-
+  AddMetaData(combined, percent.ribo, col.name = "percent.ribo")
+
+rb.genes
+
+```
+
+
+
+# Mitochondrial genes 
+
+```{r, echo=F, eval = T, message = FALSE, warning = F}
+
+combined <- PercentageFeatureSet(combined, "^mt-", col.name = "percent.mito")
+# enables you to easily calculate the percentage of all the counts belonging to a
+# subset of the possible features for each cell
+
+mito_genes <- rownames(combined)[grep("^mt-", rownames(combined))]
+mito_genes
+
+```
+
+# Plot QC
+
+Citing from “Simple Single Cell” workflows (Lun, McCarthy & Marioni, 2017): “High proportions are indicative of poor-quality cells (Islam et al. 2014; Ilicic et al. 2016), possibly because of loss of cytoplasmic RNA from perforated cells. The reasoning is that mitochondria are larger than individual transcript molecules and less likely to escape through tears in the cell membrane.”
+
+```{r, echo = F, eval = T, message = FALSE, warning = F, fig.height = 12, fig.width = 8}
+VlnPlot(
+  combined,
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"),
+  group.by = "orig.ident",
+  ncol = 2,
+  pt.size = 0.1
+)
+
+```
+
+# Filter cells and plot after QC
+We filtered outlier genes and cells which were outside the range of 3x median absolute deviation (MAD)
+of the number of cells with ribosomal reads, mitochondrial reads, and total read mapped to cells to remove noise due to sequencing depth or cell conditions. Further, cells with above 50% ribosomal reads, and genes detected in fewer than 3 cells were also removed.
+
+In summary, these cells are removed:
+
+- Cells with above 50% ribosomal reads
+
+- Cells detected less than 200 genes
+
+- Cells with total counts & mitochondrial reads outside 3 x median absolute deviations (MADs)
+
+These genes were removed: 
+
+- Genes detected in fewer than 3 cells
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+# MAD filtering
+count.mad.lower <-
+  isOutlier(combined$nCount_RNA,
+            nmads = 3,
+            log = T,
+            type = "lower")
+
+count.mad.higher <-
+  isOutlier(combined$nCount_RNA, nmads = 5, type = "higher")
+
+# Low-quality / dying cells often exhibit extensive mitochondrial contamination
+mito.mad.higher <-
+  isOutlier(
+    combined$percent.mito,
+    nmads = 3,
+    log = F,
+    type = "higher"
+  )
+
+ribo.mad.higher <-
+  isOutlier(
+    combined$percent.ribo,
+    nmads = 3,
+    log = F,
+    type = "higher"
+  )
+
+combined <-
+  AddMetaData(combined, count.mad.lower, col.name = "count.mad.lower")
+
+combined <-
+  AddMetaData(combined, count.mad.higher, col.name = "count.mad.higher")
+
+combined <-
+  AddMetaData(combined, mito.mad.higher, col.name = "mito.mad.higher")
+
+combined <-
+  AddMetaData(combined, ribo.mad.higher, col.name = "ribo.mad.higher")
+
+```
+
+
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+combined_qc <-
+  subset(
+    combined,
+    subset = percent.ribo < 50 &
+      count.mad.lower == F &
+      count.mad.higher == F &
+      mito.mad.higher == F &
+      ribo.mad.higher == F
+  )
+
+```
+
+
+# Number of cells 
+
+
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+print(paste0("before QC: ", ncol(combined)))
+table(combined$orig.ident)
+
+print(paste0("after QC: ", ncol(combined_qc)))
+table(combined_qc$orig.ident)
+
+```
+
+# Plot data after QC
+
+```{r, echo = F, eval = T, message = FALSE, warning = F, fig.height = 12, fig.width = 8}
+
+VlnPlot(
+  combined_qc,
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"),
+  group.by = "orig.ident",
+  ncol = 2,
+  pt.size = 0.1
+)
+
+```
+
+# Cell-cycle scores
+
+We here perform cell cycle scoring. To score a gene list, the algorithm calculates the difference of mean expression of the given list and the mean expression of reference genes. To build the reference, the function randomly chooses a bunch of genes matching the distribution of the expression of the given list. Cell cycle scoring adds three slots in data, a score for S phase, a score for G2M phase and the predicted cell cycle phase.
+
+We did not filter cells based on cell-cycle scores.
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+combined_qc <- NormalizeData(combined_qc)
+combined_qc <- CellCycleScoring(object = combined_qc, g2m.features = cc.genes$g2m.genes, 
+                              s.features = cc.genes$s.genes) # after normalization
+# assign each cell a score, based on its expression of G2/M and S phase markers
+
+# There are five cell cycle phases: 
+
+# - G0 : Quiescence or resting phase. The cell is not actively dividing, which is
+#   common for cells that are fully differentiated. Some types of cells enter G0 for
+#   long periods of time (many neuronal cells), while other cell types never enter
+#   G0 by continuously dividing (epithelial cells).
+
+# - G1 : Gap 1 phase represents the beginning of interphase. During G1 there is growth
+#   of the non-chromosomal components of the cells. From this phase, the cell may
+#   enter G0 or S phase.
+
+# - S : Synthesis phase for the replication of the chromosomes (also part of interphase).
+
+# - G2 : Gap 2 phase represents the end of interphase
+
+# - M : M phase is the nuclear division of the cell (consisting of prophase, metaphase,
+#   anaphase and telophase)
+
+# The division timeline is: Resting [G0] --> interphase [G1 --> S --> G2] --> cell dicision [M]
+
+
+VlnPlot(combined_qc, features = c("S.Score", "G2M.Score"), group.by = "orig.ident", 
+        ncol = 2, pt.size = 0.1)
+
+```
+
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+# Save Seurat object
+# qs::qsave is much faster than save RDS
+
+qs::qsave(combined_qc, "combined_qc.qsave") 
+#combined <- qs::qread('combined.qsave')
+
+```
+
+
+# Session info
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+sessionInfo()
+
+```
+

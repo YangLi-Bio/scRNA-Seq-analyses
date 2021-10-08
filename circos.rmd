@@ -1,0 +1,229 @@
+---
+title: "Circos plot"
+author: "Cankun Wang"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: 
+  html_document:
+  toc: true
+  toc_float: true
+  number_sections: true
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(circlize)
+library(ggsci)
+library(igraph)
+library(gtools)
+library(ComplexHeatmap)
+knitr::opts_knit$set(root.dir = "C:/Users/flyku/Desktop/yang_circos")
+
+```
+
+# Read data
+
+```{r,echo=T,eval=T,message=F,warning=F,error=F}
+graph_adj <- read.csv("ctrl.00d_Astrocyte_Macrophage_mat.csv", row.names = 1)
+graph_module <- read.csv("ctrl.00d_Astrocyte_Macrophage_cat.csv", row.names = 1)
+g <- graph.adjacency(as.matrix(graph_adj), weighted = T)
+
+```
+
+
+# Setup color palette
+```{r,echo=T,eval=T,message=F,warning=F,error=F}
+
+module_color <- pal_locuszoom()(7)
+# show_col(pal_locuszoom("default")(7))
+
+# Blue: #357ebdff
+# Brown: #7E6148FF
+# Turquoise: #4DBBD5FF
+# Yellow: #EEA236FF
+
+graph_module <- graph_module %>%
+  mutate(color = as_factor(ID)) %>% 
+  mutate(color = fct_recode(color, 
+                            "#357ebdff" = "Mac",
+                            # "#7E6148FF" = "brown.module",
+                            # "#4DBBD5FF" = "turquoise.module",
+                            "#EEA236FF" = "Ast"))
+
+#graph_module <- graph_module %>%
+#  mutate(color = as_factor(ID)) %>% 
+#  mutate(color = fct_recode(color, 
+#                            "blue" = "blue.module",
+#                            "green" = "brown.module",
+#                            "red" = "turquoise.module",
+#                            "yellow" = "yellow.module"))
+```
+
+# Filter graph by weight
+
+```{r,echo=T,eval=T,message=F,warning=F,error=F}
+
+g <- graph.adjacency(as.matrix(graph_adj), weighted = T)
+
+raw_edges <-  as.data.frame(cbind(get.edgelist(g), E(g)$weight)) %>%
+  mutate(
+    V1 = gsub('\\.', '-', V1),
+    V2 = gsub('\\.', '-', V2),
+    V3 = as.numeric(V3),
+    V4 = 1
+  )
+edges <- raw_edges %>%
+  arrange(V3)
+
+# Normalize the weight score to quantiles
+# quartiles_weight <- quantcut(edges$V3, 4)
+# levels(quartiles_weight) <- c(1:4)
+# edges$V3 <- as.integer(quartiles_weight)
+
+
+nodes <-  unique(c(edges$V1, edges$V2))
+
+sectors <- unique(c(raw_edges$V1, raw_edges$V2))
+
+
+```
+
+# Diagram color 
+
+```{r,echo=T,eval=T,message=F,warning=F,error=F}
+grid_col <- graph_module %>%
+  dplyr::filter(Genes %in% nodes) %>% 
+  dplyr::select(Genes, color) %>%
+  mutate(color = as.character(color)) %>%
+  deframe()
+
+#https://vuetifyjs.com/en/styles/colors/#material-colors
+col_fun = colorRamp2(range(edges$V3), c("#FFFDE7", "#013220"))
+
+```
+
+# Plot chordDiagram
+
+```{r,echo=T,eval=T,message=F,warning=F,error=F}
+png(
+  paste("chord.png", sep = ""),
+  width = 3500,
+  height = 3500,
+  res = 300
+)
+
+circos.par(cell.padding = c(0, 0, 0, 0), track.margin = c(-0.15,0.2))
+circos.initialize(sectors, xlim = c(0, 1))
+circos.trackPlotRegion(ylim = c(0, 1), track.height = 0.05, bg.border = NA)
+
+# we go back to the first track and customize sector labels
+circos.track(
+  track.index = 1,
+  panel.fun = function(x, y) {
+    sector.name = get.cell.meta.data("sector.index")
+    xlim = get.cell.meta.data("xlim")
+    this_node_text_color <- graph_module %>%
+      dplyr::filter(Genes == sector.name) %>%
+      pull(color) %>%
+      as.character()
+    
+    circos.rect(
+      xlim[1],
+      0,
+      xlim[2],
+      1,
+      col = this_node_text_color,
+      border = NA
+    )
+    
+    circos.text(
+      mean(xlim),
+      2,
+      CELL_META$sector.index,
+      facing = "clockwise",
+      niceFacing = TRUE,
+      adj = c(0, 0.5),
+      col= this_node_text_color
+    )
+  },
+  bg.border = NA
+) 
+
+for (i in seq_len(nrow(edges))) {
+  link <- edges[i,]
+  circos.link(link[[1]],
+              c(0, 1),
+              link[[2]],
+              c(0, 1),
+              col = col_fun(link[[3]]),
+              border = NA)
+}
+
+dev.off()
+
+```
+
+
+# Legend
+
+```{r,echo=T,eval=T,message=F,warning=F,error=F}
+lgd <- Legend(title ="Score", col_fun = col_fun)
+grid.draw(lgd)
+
+png(
+  paste("legend.png", sep = ""),
+  width = 1000,
+  height = 1000,
+  res = 300
+)
+grid.draw(lgd)
+dev.off()
+
+```
+# deprecated
+
+```{r,echo=T,eval=T,message=F,warning=F,error=F}
+# deprecated
+chordDiagram(
+  edges,
+  grid.col = grid_col,
+  col = col_fun(edges$V3),
+  scale = T,
+  link.lwd = 2,
+  annotationTrack = c("grid"),
+  annotationTrackHeight = c(0.06),
+  preAllocateTracks = list(track.height = 0.08)
+)
+
+circos.track(
+  track.index = 1,
+  panel.fun = function(x, y) {
+    sector.name = get.cell.meta.data("sector.index")
+    this_node_text_color <- graph_module %>%
+      dplyr::filter(Genes == sector.name) %>%
+      pull(color) %>%
+      as.character()
+    circos.text(
+      CELL_META$xcenter,
+      CELL_META$ylim[1],
+      CELL_META$sector.index,
+      facing = "clockwise",
+      niceFacing = TRUE,
+      adj = c(0, 0.5),
+      col= this_node_text_color
+    )
+  },
+  bg.border = NA
+) 
+```
+
+```{r,echo=T,eval=T,message=F,warning=F,error=F}
+
+```
+
+
+# Session Infomation
+
+```{r}
+sessionInfo()
+```

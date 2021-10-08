@@ -1,0 +1,413 @@
+---
+title: "Faith Brennan analysis"
+author: "Yang Li"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(RColorBrewer)
+library(Polychrome) # Tools for creating, viewing, and assessing qualitative 
+# palettes with many (20-30 or more) colors
+library(ggplot2) 
+#library(tidyverse) # The 'tidyverse' is a set of packages that work in harmony
+#library(enrichR)
+#library(GSVA) # Gene Set Variation Analysis (GSVA) is a non-parametric, unsupervised
+# method for estimating variation of gene set enrichment
+#library(ggpubr) # provides some easy-to-use functions for creating and customizing 'ggplot2'
+#library(Hmisc) # Contains many functions useful for data analysis, high-level graphics,
+# utility operations, functions
+#library(ggrepel) # Automatically Position Non-Overlapping Text Labels
+#library(ggfortify) # Data Visualization Tools for Statistical Analysis Results
+#library(QUBIC)
+#library(DESeq2)
+#library(pheatmap) # Pretty Heatmaps
+#library(patchwork) # a package that expands the API to allow for arbitrarily complex composition of plots
+#library(monocle)
+#library(DelayedArray) # A unified framework for working transparently with on-disk
+# and in-memory array-like datasets
+#library(DelayedMatrixStats) # Functions that Apply to Rows and Columns of 'DelayedMatrix' Objects
+#library(org.Mm.eg.db)
+#library(VennDiagram)
+
+#library(garnett) # facilitates automated cell type classification from single-cell
+# expression (and other genomic) data
+#knitr::opts_knit$set(root.dir = "/fs/project/PCON0005/cankun/faith")
+#
+knitr::opts_knit$set(root.dir = "C:/Users/flyku/Desktop/pop")
+
+
+```{r, echo = T, eval = F, message = FALSE, warning = F}
+
+#### 
+#the RDS contains all running results, load this data to save time
+combine.combined <- readRDS("faith_scrnaseq_seurat.rds")
+source("functions.R")
+####
+
+```
+
+
+
+# Faith's Seurat workflow
+
+
+```{r, echo = T, eval = F, message = FALSE, warning = F}
+
+## Set the maximum memory limit for a variable incase error occurs in Seurat
+options(future.globals.maxSize = 4000 * 1024 ^ 2)
+
+
+# read all the samples (may be skipped)
+A1.data <- Read10X(data.dir = "data/Sample 1 (Vehicle + Sham)")
+A2.data <- Read10X(data.dir = "data/Sample 2 (PLX + ShamI)")
+A3.data <- Read10X(data.dir = "data/Sample 3 (Vehicle + 7d SCI)")
+A4.data <- Read10X(data.dir = "data/Sample 4 (PLX + 7d SCI)")
+# A5 and A6 not included
+A7.data <- Read10X(data.dir = "data/Sample 7 (Vehicle + 28d SCI)")
+A8.data <- Read10X(data.dir = "data/Sample 8 (PLX + 28d SCI)")
+
+
+# create Seurat Object (may be skiped)
+A1 <- CreateSeuratObject(A1.data, project = "00 d Control", assay = "RNA", min.cells = 3, min.features = 200)
+A2 <- CreateSeuratObject(A2.data, project = "00 d PLX5622", assay = "RNA", min.cells = 3, min.features = 200)
+A3 <- CreateSeuratObject(A3.data, project = "07 d Control", assay = "RNA", min.cells = 3, min.features =200)
+A4 <- CreateSeuratObject(A4.data, project = "07 d PLX5622", assay = "RNA", min.cells = 3, min.features = 200)
+A7 <- CreateSeuratObject(A7.data, project = "28 d Control", assay = "RNA", min.cells = 3, min.features =200)
+A8 <- CreateSeuratObject(A8.data, project = "28 d PLX5622", assay = "RNA", min.cells = 3, min.features =200)
+
+
+cord.bigthree <- merge(A1, y = c(A2, A3, A4, A7, A8), add.cell.ids = c("00 d Control",
+                        "00 d PLX5622", "07 d Control", "07 d PLX5622", "28 d Control",
+                        "28 d PLX5622"), project = "all") # merge multiple samples (may be skipped)
+
+
+# Perform integration. Note that parameter dimensions are reduced due to
+# reduced library number compared to previous.
+  
+combinethree.list <- SplitObject(cord.bigthree, split.by = "orig.ident")
+combinethree.list <- lapply(X = combinethree.list, FUN = function(x) { # separate normalization
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+combine.anchors <- FindIntegrationAnchors(object.list = combinethree.list, dims = 1:15)
+combine.combined <- IntegrateData(anchorset = combine.anchors, dims = 1:15)
+DefaultAssay(combine.combined) <- "integrated"
+combine.combined <- ScaleData(combine.combined, verbose = FALSE)
+combine.combined <- RunPCA(combine.combined, npcs = 30, verbose = FALSE)
+combine.combined <- RunUMAP(combine.combined, reduction = "pca", dims = 1:15)
+combine.combined <- FindNeighbors(combine.combined, reduction = "pca", dims = 1:15)
+combine.combined <- FindClusters(combine.combined, resolution = 0.15)
+p1 <- DimPlot(combine.combined, reduction = "umap", group.by = "orig.ident")
+p2 <- DimPlot(combine.combined, reduction = "umap", label = TRUE)
+plot_grid(p1, p2, ncol = 1)
+DimPlot(combine.combined, reduction = "umap", split.by = "orig.ident", ncol = 2)
+
+
+#combine.combined <- RenameIdents(combine.combined, `13` = "Leptomeningeal cells")
+#combine.combined <- RenameIdents(combine.combined, `12` = "Pericytes")
+#combine.combined <- RenameIdents(combine.combined, `11` = "Oligodendrocyte lineage")
+#combine.combined <- RenameIdents(combine.combined, `10` = "Erythroid cells")
+#combine.combined <- RenameIdents(combine.combined, `9` = "Neutrophils")
+#combine.combined <- RenameIdents(combine.combined, `8` = "Intermediate progenitors")
+#combine.combined <- RenameIdents(combine.combined, `7` = "B cells")
+#combine.combined <- RenameIdents(combine.combined, `6` = "Ependymal cells")
+#combine.combined <- RenameIdents(combine.combined, `5` = "T cells")
+#combine.combined <- RenameIdents(combine.combined, `4` = "Astrocytes") 
+#combine.combined <- RenameIdents(combine.combined, `3` = "Monocytes")
+#combine.combined <- RenameIdents(combine.combined, `2` = "Endothelial cells")
+#combine.combined <- RenameIdents(combine.combined, `1` = "Macrophages")
+#combine.combined <- RenameIdents(combine.combined, `0` = "Microglia")
+
+## Save cell type name in another metadata slot instead of renaming current ident
+seurat_clusters <- combine.combined$seurat_clusters
+
+# rename from 0-13 to cell types
+# manual annotation
+levels(seurat_clusters) <- c("Microglia", "Macrophages", "Endothelial cells", "Monocytes",
+                                "Astrocytes","T cells", "Ependymal cells", "B cells",
+                                "Intermediate progenitors", "Neutrophils", "Erythroid cells",
+                                "Oligodendrocyte lineage", "Pericytes", "Leptomeningeal cells")
+combine.combined <- AddMetaData(combine.combined, seurat_clusters, col.name = 'cell_type')
+
+## The UMAP coordinates seems different from Faith's figure, while the cell clusters/types are the same.
+Idents(combine.combined) <- combine.combined$cell_type
+DimPlot(combine.combined, label = TRUE)
+
+```
+
+## Heatmap for Faith's example
+
+ComplexHeatmap is the most powerful heatmap package I know. You may check their tutorial to see if you want to add more features or annotation in the heatmap: https://jokergoo.github.io/ComplexHeatmap-reference/book/
+
+
+```{r, echo = T, eval = F, message = FALSE, warning = F}
+
+library(ComplexHeatmap)
+DefaultAssay(combine.combined) <- "RNA"
+Idents(combine.combined) <- combine.combined$cell_type
+
+# select genes in the heatmap
+this_genes <- c("Olig1", "S100a9", "Stmn1", "Top2a", "Slc1a2", "Atp1a2", "Atp1b2", "Aqp4")
+mat <- AverageExpression(combine.combined, assays = "RNA", features = this_genes,
+                        slot = "data", add.ident = "orig.ident")
+mat <- mat$RNA
+mat <- as.matrix(mat)
+
+# Normalize the matrix to z-score
+mat <- (mat - rowMeans(mat)) / rowSds(mat)
+
+heatmap_col <- data.frame(strsplit(colnames(mat),"_"))
+
+# The col_fun should be exact number as the number of cell types, and provide a name for each color
+#col_fun <- rainbow(14)
+col_fun_group <- palette36.colors(6)
+names(col_fun_group) <- as.character(levels(as.factor(combine.combined$orig.ident)))
+col_fun_cell_type <- palette36.colors(14)
+names(col_fun_cell_type) <- as.character(levels(as.factor(combine.combined$cell_type)))
+
+
+ha <- HeatmapAnnotation(group = as.character(heatmap_col[2, ]),
+    cell_type = as.character(heatmap_col[1, ]),
+    annotation_label = c("Group", "Cell type"),
+    col = list(group = col_fun_group,
+               cell_type = col_fun_cell_type)
+    ) # used for complex annotation
+
+ht <- Heatmap(mat, 
+              show_row_names = T,
+              show_column_names = F,
+              cluster_rows = T, 
+              show_column_dend = T,
+              top_annotation = ha,
+              heatmap_legend_param = list(
+                title = "z-score", 
+                title_position = "leftcenter-rot"
+                )
+        )
+        
+draw(ht)
+
+
+library(devEMF) # EMF Graphics Output Device
+emf(file = "select_genes_heatmap_group_and_cell_type.emf", width = 10, height = 7,
+    bg = "transparent", fg = "black", pointsize = 12)
+draw(ht)
+dev.off()
+
+png(paste("select_genes_heatmap_group_and_cell_type.png",sep = ""), width = 3000,
+            height = 2000, res = 300)
+draw(ht)
+dev.off()
+
+
+```
+
+## Same heatmap above but only split to control and PLX 
+
+```{r, echo = T, eval = F, message = FALSE, warning = F}
+
+library(ComplexHeatmap)
+DefaultAssay(combine.combined) <- "RNA"
+Idents(combine.combined) <- combine.combined$cell_type
+
+combined_group <- as.factor(combine.combined$orig.ident)
+levels(combined_group) <- c("Control", "PLX5622", "Control", "PLX5622", "Control", "PLX5622")
+combine.combined <- AddMetaData(combine.combined, combined_group, col.name = 'combined_group')
+
+# select genes in the heatmap
+this_genes <- c("Olig1", "S100a9", "Stmn1", "Top2a", "Slc1a2", "Atp1a2", "Atp1b2", "Aqp4")
+mat <- AverageExpression(combine.combined, assays = "RNA", features = this_genes,
+            slot = "data", add.ident = "combined_group")
+mat <- mat$RNA
+mat <- as.matrix(mat)
+# Normalize the matrix to z-score
+mat <- (mat - rowMeans(mat)) / rowSds(mat)
+
+heatmap_col <- data.frame(strsplit(colnames(mat), "_"))
+
+# The col_fun should be exact number as the number of cell types, and provide a name for each color
+#col_fun <- rainbow(14)
+col_fun_group <- palette36.colors(3)[-3]
+names(col_fun_group) <- as.character(levels(combined_group))
+
+col_fun_cell_type <- palette36.colors(14)
+names(col_fun_cell_type) <- as.character(levels(as.factor(combine.combined$cell_type)))
+
+
+ha <- HeatmapAnnotation(group = as.character(heatmap_col[2,]),
+    cell_type = as.character(heatmap_col[1,]),
+    annotation_label = c("Group", "Cell type"),
+    col = list(group = col_fun_group,
+               cell_type = col_fun_cell_type)
+    )
+
+ht <- Heatmap(mat, 
+              show_row_names = T,
+              show_column_names = F,
+              cluster_rows = T,
+              show_column_dend = T,
+              top_annotation = ha,
+              heatmap_legend_param = list(
+                title = "z-score",
+                title_position = "leftcenter-rot"
+                )
+        )
+draw(ht)
+
+
+library(devEMF) # EMF Graphics Output Device
+emf(file = "select_genes_heatmap_combine_group_and_cell_type.emf", width = 10, height = 7,
+    bg = "transparent", fg = "black", pointsize = 12)
+draw(ht)
+dev.off()
+
+png(paste("select_genes_heatmap_combine_group_and_cell_type.png",sep = ""),width=3000, height=2000,res = 300)
+draw(ht)
+dev.off()
+
+
+```
+
+
+## Heatmap for CTS genes
+
+The example below draws heatmap of all cell type specific genes, inspired by Fig 1f in this paper https://www.nature.com/articles/s41593-019-0539-4 
+
+```{r, echo = T, eval = F, message = FALSE, warning = F}
+
+library(ComplexHeatmap)
+DefaultAssay(combine.combined) <- "RNA"
+Idents(combine.combined) <- combine.combined$cell_type
+# I used a strict threashold just to increase running speed, the default threashold is 0.25
+cts_markers <- FindAllMarkers(combine.combined, logfc.threshold = 1)
+
+# Obtain cell type infomation, and sort the cell label by cell type name
+cell_info <- Idents(combine.combined)
+cell_label <- cbind(colnames(combine.combined), as.character(cell_info))
+colnames(cell_label) <- c("cell_name", "label")
+cell_label <- cell_label[order(cell_label[, 1]), ]
+cell_label <- as.data.frame(cell_label)
+cell_label <- cell_label[order(cell_label[, 2]), ]
+
+# Obtain expression data, and use the same cell name order as cell label
+
+exp_data <- GetAssayData(combine.combined, slot = "data")
+cell_idx <- as.character(cell_label[, 1])
+exp_data <- exp_data[, cell_idx]
+
+# The order of cell label should match, check by following:
+#cell_label[1:10, ]
+#colnames(exp_data)[1:10]
+
+
+BinMean <- function (vec, every, na.rm = FALSE) {
+  n <- length(vec)
+  x <- .colMeans(vec, every, n %/% every, na.rm)
+  r <- n %% every
+  if (r) x <- c(x, mean.default(vec[(n - r + 1):n], na.rm = na.rm))
+  x
+}
+
+# The dataset has 21016 cells, we usually do not plot the whole heatmap for 20k cells, mainly because the package cannot handle such high-dimension dataset and no need to display so many cells in a figure size.
+
+# We only select 500 cells from the dataset, the value is the mean expression of the nearby cells. For example, if we have 20,000 cells, the value is the mean of nearby 40 cells. Finally we have the small_exp_data, and small_cell_label
+
+this_bin <- ncol(exp_data) %/% 500
+small_cell_idx <- seq(1, ncol(exp_data), by = this_bin)
+small_exp_data <<- t(apply(exp_data, 1, function(x){
+  BinMean(x, every = this_bin)
+}))
+small_cell_label <- cell_label[small_cell_idx, ]
+
+
+colnames(small_exp_data) <- small_cell_label[,1]
+
+library(matrixStats) # Functions that Apply to Rows and Columns of Matrices
+
+# Normalize the matrix to z-score
+small_exp_data <- (small_exp_data - rowMeans(small_exp_data)) / rowSds(small_exp_data)
+
+this_genes <- unique(cts_markers$gene)
+mat <- small_exp_data[match(this_genes, rownames(small_exp_data)), ]
+
+library(circlize) # build circular charts
+
+# Use this command to display all color sets: display.brewer.all()
+
+# The col_fun should be exact number as the number of cell types, and provide a name for each color
+#col_fun <- rainbow(14)
+col_fun <- palette36.colors(14)
+names(col_fun) <- as.character(unique(cts_markers$cluster))
+
+library(tidyverse)
+
+# Subset expression matrix to only CTS genes
+this_markers <- rownames_to_column(cts_markers, "X1")
+# adds the row_names column at the first index position of our data frame
+this_markers <- this_markers[!duplicated(this_markers$gene),]
+
+# mat is the final matrix for heatmap
+mat <- small_exp_data[match(this_genes, rownames(small_exp_data)),]
+
+# annotate some genes of interest on the right
+right_annotate_genes <- c("Olig1", "S100a9", "Stmn1")
+
+ha <- rowAnnotation( foo = anno_mark(at = match(right_annotate_genes, rownames(mat)),
+                    labels = right_annotate_genes))
+
+ht <- Heatmap(mat, 
+              show_row_names = F,
+              show_column_names = F,
+              top_annotation = HeatmapAnnotation(Cluster = as.character(small_cell_label[,2]), col = list(Cluster = col_fun)),
+              column_order = c(1:ncol(mat)),
+              cluster_rows = T,
+              show_column_dend = F,
+              right_annotation = ha,
+              heatmap_legend_param = list(
+                title = "z-score",
+                title_position = "leftcenter-rot"
+                )
+            )
+
+
+library(devEMF)
+emf(file = "cts_genes_heatmap.emf", width = 10, height = 7,
+    bg = "transparent", fg = "black", pointsize = 12)
+draw(ht)
+dev.off()
+
+png(paste("cts_genes_heatmap.png",sep = ""),width=3000, height=2000,res = 300)
+draw(ht)
+dev.off()
+
+
+```
+
+
+
+
+```{r, echo = T, eval = F, message = FALSE, warning = F}
+
+#### 
+#the RDS contains all running results, load this data to save time
+saveRDS(combine.combined,"faith_scrnaseq_seurat.rds")
+####
+
+
+```
+
+# Session Infomation
+
+```{r}
+
+sessionInfo()
+
+```

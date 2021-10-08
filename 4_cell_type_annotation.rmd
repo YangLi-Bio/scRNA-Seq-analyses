@@ -1,0 +1,594 @@
+---
+title: "Cell type annotation"
+author: "Yang Li"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(cowplot)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(here)
+library(qs)
+library(Polychrome)
+library(RColorBrewer)
+library(tidyverse)
+library(fgsea) # fast preranked gene set enrichment analysis (GSEA)
+library(msigdbr) # provides Molecular Signatures Database (MSigDB) gene sets
+# typically used with the Gene Set Enrichment Analysis (GSEA)
+
+```
+
+
+# Set working dir
+
+```{r, echo = F, eval = T, message = F, warning = F, error = F}
+
+here::set_here()
+print(paste("Current working directory:", here::here()))
+
+```
+
+# Load data
+
+```{r, echo = F, eval = T, message = F, warning = F, error = F}
+
+source("functions.R")
+####
+
+#combined <- readRDS("combined.rds")
+combined <- qs::qread('combined.qsave')
+####
+
+DefaultAssay(combined) <- "RNA"
+custom_color <-
+  as.character(palette36.colors(36)[-2])[1:length(levels(Idents(combined)))]
+Idents(combined) <- combined$seurat_clusters
+
+```
+
+# Identify cell clusters
+
+```{r, echo = F, eval = F, message = FALSE, warning = F}
+
+dbs <-
+  c(
+    "GO_Molecular_Function_2018",
+    "GO_Cellular_Component_2018",
+    "GO_Biological_Process_2018",
+    "KEGG_2019_Human"
+  )
+
+DefaultAssay(combined) <- "RNA"
+combined <- FindClusters(combined, resolution = 0.5)
+
+```
+
+
+```{r, echo = F, eval = T, message = T, warning = F, error = F}
+
+table(combined$seurat_clusters)
+
+#Plot.cluster2D(combined, pt_size = 0.4, txt = "Predicted cluster") # Yuzhou's codes
+
+DimPlot(combined, reduction = "umap", cols = as.vector(palette36.colors(36)[-2]), label = T)
+
+#DimPlot(combined, reduction = "tsne", cols = as.vector(palette36.colors(36)[-2]), label = T)
+
+```
+
+
+```{r, echo = F, eval = F, message = F, warning = F, error = F}
+
+p1 <-
+  Plot.cluster2D(combined, pt_size = 0.4, txt = "Predicted cluster")
+png(
+  paste("Predicted_clusters_umap.png", sep = ""),
+  width = 3000,
+  height = 2000,
+  res = 300
+)
+p1
+dev.off()
+p1
+
+
+```
+
+3D version UMAP may be more clear
+
+```{r, echo = F, eval = T, message = F, warning = F, error = F, fig.width = 10, fig.height = 8}
+
+######### 3D UMAP
+DefaultAssay(combined) <- "RNA"
+# Interacive multimodal 3D UMAP plotting of scRNA sequencing datasets
+# The following is a length of code generated to create nice 
+# 3D UMAP plots of seurat v3.0.0-v3.1.1 objects utilizing the visualization 
+# package plot_ly
+
+# R v3.5.3 (x64 bit) and RStudio v1.2.1335 (x64 bit) were used for running this code :)
+
+# Seurat is a multimodal single Cell RNA seq analysis algorithm created by
+# The Satija Lab. For more information please see: https://satijalab.org/seurat/
+
+# Contributors (by their Github handles):
+# @Dragonmasterx87 (Dept. of Cell Biology, UM)
+# @msaadsadiq (Dept. of Electrical and Computer Engineering, UM)
+
+# Install plot_ly
+#install.packages('plotly')
+
+# Load plot_ly
+library(plotly) # makes interactive, publication-quality graphs
+
+# Construct a dataframe using data from your pre-clustered Seurat v3.1.1 object
+# Here 'seurat_clusters' is list of numeric cluster identities, you can find it here: yourseuratobject[["seurat_cluster"]], 
+# or yourseuratobject$seurat_clusters, where 'yourseuratobject' is a Seurat object created with Seurat v3.1.1 (works for v3.0.0 as well)
+
+yourseuratobject <- combined
+
+# Re-run UMAPs that you have accurate calculations for all UMAP(s)
+#yourseuratobject <- RunUMAP(yourseuratobject,
+#                            dims = 1:30,
+#                            n.components = 3L)
+
+# Extract UMAP information from Seurat Object
+umap_1 <- yourseuratobject[["umap"]]@cell.embeddings[, 1]
+umap_2 <- yourseuratobject[["umap"]]@cell.embeddings[, 2]
+umap_3 <- yourseuratobject[["umap"]]@cell.embeddings[, 3]
+
+# Visualize what headings are called so that you can extract them to form a dataframe
+# Embeddings(object = yourseuratobject, reduction = "umap")
+
+# Prepare a dataframe for cell plotting
+plot.data <- FetchData(object = yourseuratobject, vars = c("UMAP_1", "UMAP_2", "UMAP_3", "seurat_clusters"))
+
+# Make a column of row name identities (these will be your cell/barcode names)
+plot.data$label <- paste(rownames(plot.data))
+
+# Plot your data, in this example my Seurat object had 21 clusters (0-20)
+fig <- plot_ly(data = plot.data, 
+               x = ~UMAP_1, y = ~UMAP_2, z = ~UMAP_3, 
+               color = ~seurat_clusters, 
+               colors = custom_color,
+               type = "scatter3d", 
+               mode = "markers", 
+               marker = list(size = 1.5, width=1), # controls size of points
+               text = ~label, #This is that extra column we made earlier for which we will use for cell ID
+               hoverinfo = "text")
+        # When you visualize your plotly object, hovering your mouse pointer over a point shows cell names
+
+
+# Updates stemming from Issue #9 Having a fixed scale on axes while selecting particular clusters
+# @rtoddler thanks for the suggestions!
+# Before you plot, set the ranges of the axis you desire. This set axis range will be 
+# present across all clusters, and plotly will not adjust for axis length anymore
+# this axis length will persist even when selecting some clusters
+
+# xaxis
+axx <- list(
+  nticks = 4,
+  range = c(-10, 10) # select range of xaxis
+)
+
+# yaxis
+axy <- list(
+  nticks = 4,
+  range = c(-10, 10) # select range of yaxis
+)
+
+#zaxis
+axz <- list(
+  nticks = 4,
+  range = c(-10, 10) #select range of zaxis
+)
+
+#fig <- fig %>% layout(scene = list(xaxis = axx, yaxis = axy, zaxis = axz))
+fig_cube <- fig %>% layout(scene = list(xaxis = axx, yaxis = axy,zaxis = axz, aspectmode = 'cube'))
+# To maintain cubic aspect
+# fig
+fig_cube
+
+```
+
+# NOTCH1 expression
+
+
+```{r, echo = F, eval = T, message = F, warning = F, error = F}
+
+# visualize the expression of one gene across different cell clusters
+
+FeaturePlot(combined, "NOTCH1", pt.size = 0.7)
+VlnPlot(combined, "NOTCH1", group.by = "orig.ident")
+
+```
+
+
+```{r, echo = F, eval = T, message = F, warning = F, error = F, fig.width = 10, fig.height = 8}
+
+# Alternative method as designed by @vertesy (Thanks for the suggestions!)
+# create a dataframe
+goi <- "NOTCH1"
+plotting.data <- FetchData(object = yourseuratobject, vars = c("UMAP_1", "UMAP_2", "UMAP_3",
+                                                                "Expression" = goi),
+                            slot = 'data')
+# A data frame with cells as rows and cellular data as columns
+
+
+
+# Say you want to change the scale, so that every cell having an expression > 1 will be one color
+# Basically, you are re-adjusting the scale here, so that any cell having a certain expression will light up on your 3D plot
+
+# First make another column in your dataframe, where all values above 1 are re-assigned a value of 1
+# This information is stored in the 'Expression' column of your dataframe
+# Cutoff <- 2
+Cutoff <- quantile(plotting.data[, goi], probs = .95) # get values at the given quantile over requested axis
+plotting.data$"ExprCutoff" <- ifelse(test = plotting.data[, goi] < Cutoff, yes = plotting.data[, goi], no = Cutoff)
+
+# Add the label column, so that now the column has 'cellname-its expression value'
+plotting.data$label <- paste(rownames(plotting.data)," - ", plotting.data[,goi], sep = "")
+
+# Plot your data, in this example my Seurat object had 21 clusters (0-20), and cells express a gene called ACTB
+plot_ly(data = plotting.data,
+        # name = goi,
+        x = ~UMAP_1, y = ~UMAP_2, z = ~UMAP_3, 
+        color = ~ExprCutoff, # you can just run this against the column for the gene as well using ~ACTB,
+        # the algorith will automatically scale in that case based on maximal and minimal values
+        opacity = .5,
+        colors = c('darkgrey', 'red'), 
+        type = "scatter3d", 
+        mode = "markers",
+        marker = list(size = 1.4), 
+        text = ~label,
+        hoverinfo = "text"
+) %>% layout(title = goi)
+
+```
+
+
+# Cluster-specific genes
+
+The Seurat package FindAllMarkers function was used to identify cluster-specific genes. For example, for cluster 0, the package performs differential testing using cells from cluster 0 vs all other cells. Only genes with log2 fold-change > 0.5 (logfc.threshold = 0.5), and genes that are detected in a minimum fraction of 20% (min.pct = 0.2) cells in either of the two populations were saved.
+
+Considering too many tables or figures would drastically slow down the rendering of this report. I saved the Cluster-specific genes related results in the 'cluster_specific_genes' folder.
+
+```{r, echo = F, eval = F, message = F, warning = F, error = F}
+library(future)
+plan("multiprocess", workers = 20)
+plan()
+getwd()
+Idents(combined) <- combined$seurat_clusters
+DefaultAssay(combined) <- "RNA"
+# 30 mins
+#cts_markers <- FindAllMarkers(combined, logfc.threshold = 0.5, min.pct = 0.2)
+cts_markers %>%
+  filter(p_val_adj < 0.05) %>%
+  write_csv("cluster_specific_genes_combined.csv")
+# i = 1
+for (i in seq_along(levels(cts_markers$cluster))) {
+  this_cluster <- levels(cts_markers$cluster)[i]
+  cts_markers %>%
+    filter(cluster == this_cluster & p_val_adj < 0.05) %>%
+    write_csv(paste0("marker_cluster_", this_cluster, ".csv"))
+}
+
+
+```
+
+# Cluster enrichment analysis
+
+Enrichment results for each cluster were saved at 'cluster_enrichment' folder.
+
+```{r, echo = F, eval = F, message = F, warning = F, error = F, fig.width = 12, fig.height = 8}
+
+#cts_markers <- read.csv("cluster_specific_genes_combined.csv")
+
+# i=1
+DefaultAssay(combined) <- "RNA"
+Idents(combined) <- combined$seurat_clusters
+
+for (i in seq_along(levels(Idents(combined)))) {
+  Idents(combined) <- combined$seurat_clusters
+  this_subset <- subset(combined, idents = levels(Idents(combined))[i])
+  DefaultAssay(this_subset) <- 'RNA'
+  
+  res <- cts_markers %>%
+    dplyr::filter(cluster == levels(Idents(combined))[i]) %>% # Subset rows using column values
+    dplyr::select(gene, avg_log2FC) %>% # Subset columns using their names and types
+    arrange(desc(avg_log2FC)) %>% # arrange: Arrange rows by variables. Description.
+    # Use desc() to sort a variable in descending order.
+    na.omit() %>% # removes all incomplete cases of a data object
+    distinct() %>% # Retain only unique/distinct rows from an input tbl
+    group_by(gene) %>% # takes an existing tbl and converts it into a grouped tbl
+    # where operations are performed
+    deframe() %>% # converts two-column data frames to a named vector or list,
+    # using the first column as name and the second column as value
+    sort(decreasing = T)
+    
+ 
+  m_df <- msigdbr(species = "Homo sapiens", category = "H") # provides Molecular
+  # Signatures Database (MSigDB) gene sets typically used with the Gene Set Enrichment Analysis (GSEA)
+  # category : MSigDB collection abbreviation, such as H or C1.
+  # subcategory : MSigDB sub-collection abbreviation, such as CGP or BP.
+  
+  m_list <- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+  fgseaRes <- fgsea(pathways = m_list, stats = res, nperm = 1000) # fast gene set enrichment analysis
+  # pathways : List of gene sets to check.
+  # stats : Named vector of gene-level stats. Names should be the same as in ’pathways’
+  # nperm : Number of permutations to do. Minimial possible nominal p-value is about 1/nperm
+  # Return a table with GSEA results. Each row corresponds to a tested pathway. 
+  
+  fgseaResTidy <- fgseaRes %>%
+    as_tibble() %>% # turns an existing object, such as a data frame or matrix,
+    # into a so-called tibble, a data frame with class tbl_df
+    arrange(desc(NES)) %>% #  Transform a vector into a format that will be sorted in descending order
+    # sorted according to variable names
+    dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% # Positive values select variables;
+    # negative values to drop variables
+    arrange(padj) %>%
+    write_csv(paste0("GSEA_cluster_",levels(Idents(combined))[i],".csv")) 
+  
+}
+
+```
+
+
+# Clusters UMAP plot split by condition
+
+## Split by condition 
+
+Number of cells for each cluster:
+ 
+```{r, echo = F, eval = T, message = F, warning = F, error = F, fig.width = 12, fig.height = 8}
+
+condition_idents <- as.factor(combined$orig.ident)
+levels(condition_idents) <- c(rep("ctrl",6), rep("N1KO",6)) # mark the samples with conditions
+combined <- AddMetaData(combined, condition_idents, col.name = "condition")
+table(combined$condition, combined$seurat_clusters) # two column table
+
+```
+
+
+```{r, echo = F, eval = T, message = F, warning = F, error = F, fig.width = 12, fig.height = 8}
+
+Idents(combined) <- combined$seurat_clusters
+
+p2 <-
+  DimPlot(
+    combined,
+    reduction = "umap",
+    split.by = "condition",
+    cols = as.vector(palette36.colors(36)[-2]),
+    ncol = 2,
+    pt.size = 0.7
+  )
+
+png(
+  paste("cluster_split_by_condition.png", sep = ""),
+  width = 3000,
+  height = 1500,
+  res = 300
+)
+
+p2
+dev.off()
+p2
+
+```
+
+## Split by samples
+
+Number of cells for each cluster:
+
+
+```{r, echo = F, eval = T, message = F, warning = F, error = F, fig.width = 12, fig.height = 8}
+
+table(combined$orig.ident, combined$seurat_clusters)
+
+```
+
+
+```{r, echo = F, eval = T, message = F, warning = F, error = F, fig.width = 8, fig.height = 16}
+
+p3 <-
+  DimPlot(
+    combined,
+    reduction = "umap",
+    group.by = "seurat_clusters",
+    split.by = "orig.ident",
+    cols = as.vector(palette36.colors(36)[-2]),
+    ncol = 6,
+    pt.size = 0.6
+  )
+
+png(
+  paste("cluster_split_by_sample.png", sep = ""),
+  width = 6000,
+  height = 2000,
+  res = 300
+)
+
+p3
+dev.off()
+p3
+
+```
+
+
+# Cell type markers
+
+- The input marker gene list is stored at 'provided_marker.csv'
+- The gene expression plots of the cell types are stored in 'marker_plots' folder. 
+
+Some of genes are not presented in the data, I have renamed some of these genes:
+
+- T -> TBXT
+
+- FLK1 -> KDR, CD309, VEGFR
+
+- CD31 (PECAM-1) -> PECAM1
+
+- SMA -> ACTA2
+
+- TE-7 -> TE7
+
+These gene symbols were not found in the data
+
+CD309, VEGFR, TE7
+
+```{r, echo = F, eval = F, message = F, warning = F, error = F}
+
+library(SCINA) # automatic cell type annotation
+library(preprocessCore) # many functions
+signatures <- preprocess.signatures("provided_marker.csv")
+# A function to convert signatures uploaded via .csv files to lists
+library(cowplot)
+DefaultAssay(combined) <- "RNA"
+this_markers <- unlist(signatures)
+#this_markers[!this_markers %in% rownames(combined)]
+
+# Feature plot
+for (i in seq_along(this_markers)) {
+  p1 <-
+    FeaturePlot(
+      combined,
+      as.character(this_markers[i]),
+      split.by = "orig.ident",
+      combine = F,
+      pt.size = 0.25,
+      keep.scale = "all",
+      cols = c('#C0C0C0', '#B00D23') # From Apple (PRODUCT)RED
+    )
+  
+  p2 <- lapply(p1, function(x) {
+    x + theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+  })
+  
+  p3 <- CombinePlots(p2, ncol = 6, legend = "right") # Combine ggplot2-based plots into a single plot
+  
+  png(
+    paste(
+      names(this_markers[i]),
+      "_marker_",
+      as.character(this_markers[i]),
+      ".png",
+      sep = ""
+    ),
+    width = 6000,
+    height = 1800,
+    res = 300
+  )
+  print(p3)
+  dev.off()
+}
+
+# Violin plot of cells grouped by Seurat clusters
+for (i in seq_along(this_markers)) {
+  p <-
+    VlnPlot(combined,
+            as.character(this_markers[i]),
+            ncol = 1,
+            group.by = "seurat_clusters",)
+  png(
+    paste(
+      names(this_markers[i]),
+      "_violin_",
+      as.character(this_markers[i]),
+      ".png",
+      sep = ""
+    ),
+    width = 1800,
+    height = 1500,
+    res = 300
+  )
+  print(p)
+  dev.off()
+}
+
+# Violin plot of cells grouped by original IDs
+for (i in seq_along(this_markers)) {
+  p_scina <-
+    VlnPlot(combined,
+            as.character(this_markers[i]),
+            ncol = 1,
+            group.by = "orig.ident")
+  png(
+    paste(
+      names(this_markers[i]),
+      "_violin_by_time_",
+      as.character(this_markers[i]),
+      ".png",
+      sep = ""
+    ),
+    width = 1800,
+    height = 1500,
+    res = 300
+  )
+  print(p_scina)
+  dev.off()
+}
+
+
+```
+
+
+
+```{r, echo = F, eval = F, message = FALSE, warning = F}
+
+# Save Seurat object
+Idents(combined) <- combined$orig.ident
+obj <- subset(combined, idents = "N1KO30")
+FeaturePlot(obj, features = "MYL2")
+VlnPlot(obj, features = "EOMES")
+
+
+obj <- subset(combined, idents = "Con30")
+FeaturePlot(obj, features = "MYL2")
+VlnPlot(obj, features = "MYL2")
+
+
+
+ct_label <- as.factor(combined$seurat_clusters)
+levels(ct_label) <- c("1")
+combined <- AddMetaData(combined, ct_label, col.name = "cell_type")
+table(combined$seurat_clusters, combined$orig.ident)
+DimPlot(combined, reduction = "umap", cols = as.vector(palette36.colors(36)[-2]), label = T)
+
+```
+
+
+```{r, echo = F, eval = F, message = FALSE, warning = F}
+
+# Save Seurat object
+# qs::qsave is much faster than save RDS
+
+qs::qsave(combined, "combined.qsave") 
+#combined <- qs::qread('combined.qsave')
+
+```
+
+```{r, echo = F, eval = F, message = F, warning = F, error = F}
+
+# Manually save the rds, do not save on knitr
+saveRDS(combined, "combined.rds")
+
+```
+

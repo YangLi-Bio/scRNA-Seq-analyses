@@ -1,0 +1,185 @@
+---
+title: "6. Subtyping analysis"
+author: "Yang Li"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(RColorBrewer)
+library(Polychrome)
+library(ggplot2) 
+#library(tidyverse)
+#library(enrichR)
+#library(GSVA)
+#library(ggpubr)
+#library(Hmisc)
+#library(ggpubr)
+#library(ggrepel)
+#library(ggfortify)
+#library(QUBIC)
+#library(DESeq2)
+#library(pheatmap)
+#library(patchwork)
+#library(monocle)
+#library(DelayedArray)
+#library(DelayedMatrixStats)
+#library(org.Mm.eg.db)
+#library(VennDiagram)
+
+#library(garnett)
+#knitr::opts_knit$set(root.dir = "/fs/project/PCON0005/cankun/faith")
+#
+knitr::opts_knit$set(root.dir = "C:/Users/flyku/Desktop/pop")
+source("functions.R")
+
+```
+
+```{r, echo = T, eval = T, message = F, warning = F, error = F}
+#### 
+
+#the faith_scrnaseq.RData contains all running results, load this data to save time
+load("faith_scrnaseq_0602.RData")
+#load("faith_scrnaseq.RData")
+
+####
+
+```
+
+# Overview
+
+Analyses:
+
+Task : We suspect there could be multiple cell subtypes within the supercluster made up of
+clusters 0-3. Please select groups 0-3 together. Repeat UMAP analysis on only these
+clusters and see how many clusters it breaks down into (could go from four clusters to
+up to 10 clusters based on the literature).
+
+
+```
+
+
+# Task
+
+## Select cluster 0-3 
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+this_ct <- 0:3
+Idents(combined) <- combined$seurat_clusters
+this_obj <- subset(combined, idents = this_ct)
+DefaultAssay(this_obj) <- "RNA"
+this_obj <- NormalizeData(this_obj) # Normalize the count data present in a given assay.
+this_obj <- FindVariableFeatures(this_obj) # Identifies features that are outliers on a 
+# 'mean variability plot'.
+this_obj <- ScaleData(this_obj) # Scales and centers features in the dataset. 
+# If variables are provided in vars.to.regress, they are individually regressed against each feautre, 
+# and the resulting residuals are then scaled and centered.
+
+this_obj <- RunPCA(this_obj, verbose = FALSE)
+this_obj <- FindNeighbors(this_obj, dims = 1:30)
+# Change resolution to genereate 10 sub-clusters
+this_obj <- FindClusters(this_obj, resolution = 0.5)
+this_obj <- RunUMAP(this_obj, reduction = "pca", dims = 1:30)
+Idents(this_obj) <- this_obj$seurat_clusters
+Plot.cluster2D(object=this_obj, reduction.method = "umap", customized = T, pt_size = 0.25,
+                txt = "Predicted cluster")
+
+
+png(paste("cluster_0123_umap.png", sep = ""), width = 3000, height = 1500, res = 300)
+Plot.cluster2D(object = this_obj, reduction.method = "umap", customized = T,
+                pt_size = 0.25, txt = "Predicted cluster")
+quiet(dev.off()) # Suppress All Output From An Expression. Works Cross-Platform.
+
+## Find all cell type specific genes in subcluster 0:3
+
+seurat_markers <- FindAllMarkers(this_obj)
+
+write.csv(seurat_markers, "cluster_0123_DEGs.csv")
+
+```
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+## When you done analysis, manually save RData, do not run this chunk on knitr.
+#save.image(file = "faith_scrnaseq_0602.RData")
+
+```
+
+
+# Generate average gene expression table
+
+Which assay to use? https://github.com/satijalab/seurat/issues/1717 
+
+*use the integrated assay when trying to 'align' cell states that are shared across datasets (i.e. for clustering, visualization, learning pseudotime, etc.)
+
+*use the RNA assay when exploring the genes that change either across clusters, trajectories, or conditions.
+
+run normalization and scale data after switching to RNA assay: https://github.com/satijalab/seurat/issues/2023
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+DefaultAssay(combined) <- 'RNA'
+combined <- NormalizeData(combined)
+combined <- ScaleData(combined)
+cluster.averages <- AverageExpression(combined, assays = "RNA")
+#VlnPlot(this_obj, features = "Gfap", assay = "RNA")
+
+#total_clusters = 15
+total_clusters <- length(levels(combined$seurat_clusters))
+Idents(combined) <- combined$seurat_clusters
+
+tmp_list <- list()
+#iterate all seurat clusters
+for (i in 1:total_clusters) {
+  this_cluster <- levels(combined$seurat_clusters)[i]
+  this_object <- subset(combined, seurat_clusters == this_cluster)
+  Idents(this_obj) <- this_obj$orig.ident
+  this_average_expr <- AverageExpression(this_obj, assays = "RNA")
+  # Averaged Gene Expression By Identity Class
+  
+  colnames(this_average_expr$RNA) <- paste0("Cluster", this_cluster,"_",colnames(this_average_expr$RNA))
+  tmp_list[[i]] <- this_average_expr$RNA
+}
+
+average_expression_result <- data.frame(tmp_list)
+# R will convert spaces and '+' symbols to '.', we could convert to underscore first  
+#colnames(average_expression_result) <-  gsub('([[:punct:]])|\\s+','_',colnames(average_expression_result))
+
+write.csv(average_expression_result,"average_expr.csv")
+
+```
+
+
+# Generate UMAP feature plots for genes of interest
+
+This section aims to perform analysis from section 2 in file 'scRNAseq template integrated analysis for Yang to try on spinal cord data.pages'
+
+microglial genes: P2Ry12, CSF1R, Cx3Cr1. 
+also  genes: TLR2, TLR4, CCL2, and TNF
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+FeaturePlot(combined, features = c("P2ry12", "Csf1r", "Cx3cr1"))
+# Visualize 'Features' On A Dimensional Reduction Plot
+
+FeaturePlot(combined, features = c("Tlr2", "Tlr4", "Ccl2", "Tnf"))
+
+```
+
+
+# Session Infomation
+
+```{r}
+
+sessionInfo()
+# Print version information about R, the OS and attached or loaded packages.
+
+```

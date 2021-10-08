@@ -1,0 +1,172 @@
+---
+title: "1. Load count data"
+author: "Yang Li"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Whether to display the source code in the output document
+library(Seurat)
+library(cowplot) # provides various features that help with creating publication-quality
+# figures
+library(dplyr) # a set of functions designed to enable dataframe manipulation in
+# an intuitive, user-friendly way
+library(ggplot2)
+library(patchwork) # combine separate ggplots into the same graphic
+library(here) # uses a reasonable heuristics to find your project's files, based
+# on the current working directory at the time when the package is loaded
+library(qs) # Quick Serialization of R Objects
+library(Polychrome) # Tools for creating, viewing, and assessing qualitative palettes
+
+```
+
+
+# Set working dir
+
+```{r,echo = F, eval = T, message = F, warning = F, error = F}
+
+here::set_here() # will always locate the files relative to your project root
+print(paste("Current working directory:", here::here()))
+
+```
+
+# Load data and create objects for each dataset
+
+If Read10X_h5 does not work, use the Read10X function and read the "filtered_feature_bc_matrix" folder. For example: 
+
+```{r,echo = F, eval = T, message = F, warning = F, error = F}
+
+# read the feature-bc matrices in binary format, i.e., h5
+A1.data <-
+  Read10X_h5("data/Y7746_SegalB_Young-SC-d6_V1G_1/filtered_feature_bc_matrix.h5")
+A2.data <-
+  Read10X_h5("data/Y7747_SegalB_Old-SC-d6_V1G_1/filtered_feature_bc_matrix.h5")
+A3.data <-
+  Read10X_h5("data/Y7748_SegalB_Young-Meninges-d6_V1G_1/filtered_feature_bc_matrix.h5")
+A4.data <-
+  Read10X_h5("data/Y7749_SegalB_Old-Meninges-d6_V1G_1/filtered_feature_bc_matrix.h5")
+A5.data <-
+  Read10X_h5("data/Y7750_SegalB_Young-SC-d10_V1G_1/filtered_feature_bc_matrix.h5")
+A6.data <-
+  Read10X_h5("data/Y7751_SegalB_Old-SC-d10_V1G_1/filtered_feature_bc_matrix.h5")
+A7.data <-
+  Read10X_h5("data/Y7752_SegalB_Young-Meninges-d10_V1G_1/filtered_feature_bc_matrix.h5")
+A8.data <-
+  Read10X_h5("data/Y7753_SegalB_Old-Meninges-d10_V1G_1/filtered_feature_bc_matrix.h5")
+
+# create a SeuratObject for each sample
+A1 <-
+  CreateSeuratObject(
+    A1.data,
+    project = "Young-SC-d6",
+    assay = "RNA",
+    min.cells = 3,
+    min.features = 200
+  )
+A2 <-
+  CreateSeuratObject(
+    A2.data,
+    project = "Old-SC-d6",
+    assay = "RNA",
+    min.cells = 3,
+    min.features = 200
+  )
+A3 <-
+  CreateSeuratObject(
+    A3.data,
+    project = "Young-Meninges-d6",
+    assay = "RNA",
+    min.cells = 3,
+    min.features = 200
+  )
+A4 <-
+  CreateSeuratObject(
+    A4.data,
+    project = "Old-Meninges-d6",
+    assay = "RNA",
+    min.cells = 3,
+    min.features = 200
+  )
+A5 <-
+  CreateSeuratObject(
+    A5.data,
+    project = "Young-SC-d10",
+    assay = "RNA",
+    min.cells = 3,
+    min.features = 200
+  )
+A6 <-
+  CreateSeuratObject(
+    A6.data,
+    project = "Old-SC-d10",
+    assay = "RNA",
+    min.cells = 3,
+    min.features = 200
+  )
+A7 <-
+  CreateSeuratObject(
+    A7.data,
+    project = "Young-Meninges-d10",
+    assay = "RNA",
+    min.cells = 3,
+    min.features = 200
+  )
+A8 <-
+  CreateSeuratObject(
+    A8.data,
+    project = "Old-Meninges-d10",
+    assay = "RNA",
+    min.cells = 3,
+    min.features = 200
+  )
+
+```
+
+# Merge all datasets
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+combined <- merge(
+  A1,
+  y = c(A2, A3, A4, A5, A6, A7, A8),
+  add.cell.ids = c( # add the sample names for each SeuratObject
+    "Young-SC-d6",
+    "Old-SC-d6",
+    "Young-Meninges-d6",
+    "Old-Meninges-d6",
+    "Young-SC-d10",
+    "Old-SC-d10",
+    "Young-Meninges-d10",
+    "Old-Meninges-d10"
+  ),
+  project = "EAE_SKIN"
+)
+
+```
+
+
+# Save Seurat object
+
+qs::qsave is much faster than save RDS
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+qs::qsave(combined, "combined_raw.qsave") 
+#combined <- qs::qread('combined_raw.qsave')
+
+```
+
+# Session info
+
+```{r, echo = F, eval = T, message = FALSE, warning = F}
+
+sessionInfo()
+
+```
+

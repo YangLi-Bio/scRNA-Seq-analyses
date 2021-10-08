@@ -1,0 +1,259 @@
+---
+title: "5. Differential expression analysis"
+author: "Yang Li"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(RColorBrewer)
+library(Polychrome)
+library(ggplot2) 
+#library(tidyverse)
+#library(enrichR)
+#library(GSVA)
+#library(ggpubr)
+#library(Hmisc)
+#library(ggpubr)
+#library(ggrepel)
+#library(ggfortify)
+#library(QUBIC)
+#library(DESeq2)
+#library(pheatmap)
+#library(patchwork)
+#library(monocle)
+#library(DelayedArray)
+#library(DelayedMatrixStats)
+#library(org.Mm.eg.db)
+#library(VennDiagram)
+
+#library(garnett)
+#knitr::opts_knit$set(root.dir = "/fs/project/PCON0005/cankun/faith")
+#
+knitr::opts_knit$set(root.dir = "C:/Users/flyku/Desktop/pop")
+source("functions.R")
+
+```
+
+```{r, echo = T, eval = T, message = F, warning = F, error = F}
+#### 
+
+#the faith_scrnaseq.RData contains all running results, load this data to save time
+load("faith_scrnaseq_0602.RData")
+#load("faith_scrnaseq.RData")
+
+####
+
+```
+
+# Overview
+
+Analyses:
+
+Task : Find differentially expressed genes for the following comparisons for three cell types
+(monocytes, astrocytes and oligodendrocyte precursors). Please show the cut-offs used
+for parameter thresholds and types of statistical tests used. Please share the output
+data tables to Faith’s shared folder.
+
+
+```
+
+
+
+Find DE genes for selected groups.
+
+## Monocytes (cluster 5)
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+DefaultAssay(combined) <- 'RNA'
+this_ct <- "5" # the cluster ID
+this_obj <- subset(combined, subset = seurat_clusters == this_ct) # extract this cluster
+Idents(this_obj) <- this_obj$orig.ident
+levels(as.factor(this_obj$orig.ident))
+
+```
+
+### Sham Vehicle vs Sham PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + Sham"
+group2 <- "PLX + ShamI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct,"_",group1,"_vs_",group2,".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+### 7d SCI Vehicle vs 7d SCI PLX5622
+
+```{r, fig.width = 10, fig.height = 10,echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + 7d SCI"
+group2 <- "PLX + 7d SCI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct,"_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+### 14d SCI Vehicle vs 14d SCI PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + 14d SCI"
+group2 <- "PLX + 14d SCI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct,"_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+### 28d SCI Vehicle vs 28d SCI PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + 28d SCI"
+group2 <- "PLX + 28d SCI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct, "_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+
+## Astrocytes (cluster 6)
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+this_ct <- "6"
+this_obj <- subset(combined, subset = seurat_clusters == this_ct)
+Idents(this_obj) <- this_obj$orig.ident
+levels(as.factor(this_obj$orig.ident))
+
+```
+
+### Sham Vehicle vs Sham PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + Sham"
+group2 <- "PLX + ShamI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct, "_", group1,"_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+### 7d SCI Vehicle vs 7d SCI PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + 7d SCI"
+group2 <- "PLX + 7d SCI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct, "_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers,output_filename)
+
+```
+
+### 14d SCI Vehicle vs 14d SCI PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + 14d SCI"
+group2 <- "PLX + 14d SCI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct, "_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+### 28d SCI Vehicle vs 28d SCI PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + 28d SCI"
+group2 <- "PLX + 28d SCI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct, "_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+## Oligodendrocyte precursors (cluster 14)
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+this_ct <- "14"
+this_obj <- subset(combined, subset = seurat_clusters == this_ct)
+Idents(this_obj) <- this_obj$orig.ident
+levels(as.factor(this_obj$orig.ident))
+
+```
+
+### Sham Vehicle vs Sham PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + Sham"
+group2 <- "PLX + ShamI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct, "_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+### 7d SCI Vehicle vs 7d SCI PLX5622
+
+```{r, fig.width = 10, fig.height = 10,echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + 7d SCI"
+group2 <- "PLX + 7d SCI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct,"_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+### 14d SCI Vehicle vs 14d SCI PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + 14d SCI"
+group2 <- "PLX + 14d SCI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct,"_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+### 28d SCI Vehicle vs 28d SCI PLX5622
+
+```{r, fig.width = 10, fig.height = 10, echo = T, message = T, warning = F}
+
+group1 <- "Vehicle + 28d SCI"
+group2 <- "PLX + 28d SCI"
+this_markers <- Seurat::FindMarkers(this_obj, ident.1 = group1, ident.2 = group2)
+output_filename <- paste0("Cluster", this_ct, "_", group1, "_vs_", group2, ".csv")
+write.csv(this_markers, output_filename)
+
+```
+
+
+
+# Session Infomation
+
+```{r}
+
+sessionInfo()
+# Print version information about R, the OS and attached or loaded packages.
+
+```
